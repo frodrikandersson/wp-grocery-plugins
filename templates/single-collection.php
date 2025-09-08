@@ -1,5 +1,14 @@
 <?php
-// Minimal single-collection template
+/*
+Plugin Name: WP Grocery Plugins - Single Collection
+Plugin URI: https://example.com
+Description: Custom plugin for grocery collections.
+Version: 1.0
+Author: Your Name
+Author URI: https://example.com
+License: GPL2
+*/
+
 get_header();
 global $post;
 $product_ids = get_post_meta( $post->ID, '_collection_product_ids', true );
