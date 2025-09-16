@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce Collections (Recipes)
  * Description: Let users create "collections" (recipes) made of existing WC products, send coupon via Mailgun, GTM integration, "Purchase all" button, and archive/filter UI.
  * Version: 0.1
- * Author: Your Name
+ * Author: Fredrik
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -19,7 +19,6 @@ class WC_Collections_Plugin {
     }
 
     public function __construct() {
-        // Hooks
         add_action( 'init', [ $this, 'register_collection_cpt' ] );
         add_action( 'init', [ $this, 'register_collection_taxonomy' ] );
         add_action( 'add_meta_boxes', [ $this, 'add_collection_metaboxes' ] );
@@ -29,21 +28,17 @@ class WC_Collections_Plugin {
         add_action( 'admin_init', [ $this, 'register_settings' ] );
 
 
-        // Shortcodes & AJAX endpoints
         add_shortcode( 'collection_create_form', [ $this, 'shortcode_collection_form' ] );
         add_action( 'wp_ajax_wc_collections_create', [ $this, 'handle_frontend_create' ] );
         add_action( 'wp_ajax_nopriv_wc_collections_create', [ $this, 'handle_frontend_create' ] );
         add_action( 'wp_ajax_wc_collections_admin_search_products', [ $this, 'ajax_admin_search_products' ] );
         add_action( 'wp_ajax_wc_collections_search_products', [ $this, 'ajax_front_search_products' ] );
 
-        // Add purchase all endpoint for theme to call
         add_action( 'admin_post_nopriv_wc_collections_purchase_all', [ $this, 'purchase_all_handler' ] );
         add_action( 'admin_post_wc_collections_purchase_all', [ $this, 'purchase_all_handler' ] );
 
-        // single template override (if theme doesn't provide)
         add_filter( 'single_template', [ $this, 'maybe_load_single_template' ] );
 
-        // expose REST API field for product IDs
         add_action( 'rest_api_init', function() {
             register_rest_field( 'collection',
                 'product_ids',
@@ -104,7 +99,6 @@ class WC_Collections_Plugin {
 
         echo '<p>Select at least 2 products to attach to this collection.</p>';
         echo '<select id="wc-collection-products" name="wc_collection_products[]" multiple style="width:100%;">';
-        // We'll lazy-load via AJAX on page; but for simplicity, output current ones
         foreach ( $product_ids as $pid ) {
             $p = get_post( $pid );
             if ( $p ) printf( '<option value="%d" selected>%s</option>', esc_attr($pid), esc_html($p->post_title) );
@@ -112,7 +106,6 @@ class WC_Collections_Plugin {
         echo '</select>';
         echo '<p class="description">Start typing to search products.</p>';
 
-        // JS hook will initialize select2 and AJAX search
     }
 
     public function save_collection_meta( $post_id, $post ) {
@@ -122,12 +115,9 @@ class WC_Collections_Plugin {
 
         $product_ids = isset( $_POST['wc_collection_products'] ) ? array_map('intval', (array) $_POST['wc_collection_products']) : array();
 
-        // enforce at least 2 unique products
         $product_ids = array_values( array_unique( array_filter( $product_ids ) ) );
         if ( count( $product_ids ) < 2 ) {
-            // Prevent publishing if not enough products: set status to draft & add admin notice
             if ( $post->post_status === 'publish' ) {
-                // move back to draft
                 wp_update_post( array( 'ID' => $post_id, 'post_status' => 'draft' ) );
                 add_action( 'admin_notices', function() {
                     echo '<div class="notice notice-error"><p>Collections must contain at least 2 products. Saved as draft.</p></div>';
@@ -142,33 +132,64 @@ class WC_Collections_Plugin {
        Enqueue frontend + admin assets
        ---------------------------- */
     public function enqueue_frontend_assets() {
-        // Select2 for product selection on admin screen; for simplicity we target both admin & front
-        wp_register_style( 'wc-collections-select2', 'https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css' );
-        wp_register_script( 'wc-collections-select2', 'https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js', array('jquery'), null, true );
+        wp_register_style(
+            'wc-collections-select2',
+            'https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css',
+            [],
+            '4.0.13'
+        );
+        wp_register_script(
+            'wc-collections-select2',
+            'https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js',
+            ['jquery'],
+            '4.0.13',
+            true
+        );
 
-        // Frontend form JS
-        wp_enqueue_script( 'wc-collections-frontend', plugin_dir_url(__FILE__) . 'assets/js/collections-frontend.js', array('jquery'), '0.1', true );
-        wp_localize_script( 'wc-collections-frontend', 'WCCollections', array(
-            'ajax_url' => admin_url( 'admin-ajax.php' ),
-            'nonce'    => wp_create_nonce( 'wc_collections_frontend' ),
-            'purchase_all_nonce' => wp_create_nonce( 'wc_collections_purchase' ),
-            'plugin_url'=> plugin_dir_url(__FILE__),
-        ) );
+        if ( ! is_admin() ) {
+            wp_enqueue_style( 'wc-collections-select2' );
+            wp_enqueue_script( 'wc-collections-select2' );
 
-        // Only enqueue select2 if on admin edit screen for collection
+            wp_enqueue_script(
+                'wc-collections-frontend',
+                plugin_dir_url(__FILE__) . 'assets/js/collections-frontend.js',
+                ['jquery', 'wc-collections-select2'],
+                '0.1',
+                true
+            );
+
+            wp_localize_script( 'wc-collections-frontend', 'WCCollections', [
+                'ajax_url'           => admin_url( 'admin-ajax.php' ),
+                'nonce'              => wp_create_nonce( 'wc_collections_frontend' ),
+                'purchase_all_nonce' => wp_create_nonce( 'wc_collections_purchase' ),
+                'plugin_url'         => plugin_dir_url(__FILE__),
+            ] );
+        }
+
         if ( is_admin() ) {
             global $pagenow;
-            if ( in_array( $pagenow, array('post.php','post-new.php') ) && isset($_GET['post_type']) && $_GET['post_type'] === 'collection' ) {
+            if ( in_array( $pagenow, ['post.php', 'post-new.php'] ) &&
+                ( $_GET['post_type'] ?? '' ) === 'collection' ) {
+
                 wp_enqueue_style( 'wc-collections-select2' );
                 wp_enqueue_script( 'wc-collections-select2' );
-                wp_enqueue_script( 'wc-collections-admin', plugin_dir_url(__FILE__) . 'assets/js/collections-admin.js', array('jquery','wc-collections-select2'), '0.1', true );
-                wp_localize_script( 'wc-collections-admin', 'WCCollectionsAdmin', array(
+
+                wp_enqueue_script(
+                    'wc-collections-admin',
+                    plugin_dir_url(__FILE__) . 'assets/js/collections-admin.js',
+                    ['jquery', 'wc-collections-select2'],
+                    '0.1',
+                    true
+                );
+
+                wp_localize_script( 'wc-collections-admin', 'WCCollectionsAdmin', [
                     'ajax_url' => admin_url( 'admin-ajax.php' ),
                     'nonce'    => wp_create_nonce( 'wc_collections_admin' ),
-                ) );
+                ] );
             }
         }
     }
+
 
     /* ----------------------------
        Shortcode: front-end create form
@@ -176,7 +197,6 @@ class WC_Collections_Plugin {
     public function shortcode_collection_form( $atts ) {
         ob_start();
 
-        // We'll load categories
         $terms = get_terms( array( 'taxonomy' => 'collection_category', 'hide_empty' => false ) );
 
         ?>
@@ -251,9 +271,8 @@ class WC_Collections_Plugin {
             wp_send_json_error( 'Email required for coupon' );
         }
 
-        // Create collection as pending if user not logged in; if logged in author is current user
         $post_author = get_current_user_id() ? get_current_user_id() : 0;
-        $post_status = is_user_logged_in() ? 'publish' : 'pending'; // optionally allow guest published; safer to pending
+        $post_status = is_user_logged_in() ? 'publish' : 'pending';
         $new = wp_insert_post( array(
             'post_type' => 'collection',
             'post_title' => $title,
@@ -266,25 +285,19 @@ class WC_Collections_Plugin {
             wp_send_json_error( 'Could not create collection.' );
         }
 
-        // Attach products
         update_post_meta( $new, '_collection_product_ids', $product_ids );
 
-        // Set taxonomy
         if ( $cat ) wp_set_post_terms( $new, array($cat), 'collection_category', false );
 
-        // If coupon requested -> generate coupon & send via Mailgun
         $coupon_code = '';
         if ( $want_coupon ) {
-            // create coupon (50 SEK off or 10% — configurable)
             $settings = get_option( $this->option_key, array() );
             $amount = $settings['coupon_amount'] ?? '10';
-            $type = $settings['coupon_type'] ?? 'percent'; // percent or fixed_cart
+            $type = $settings['coupon_type'] ?? 'percent'; 
             $coupon_code = $this->create_coupon_for_email( $amount, $type, $coupon_email );
             if ( is_wp_error( $coupon_code ) ) {
-                // continue but inform user
                 $coupon_error = $coupon_code->get_error_message();
             } else {
-                // Send via Mailgun if configured
                 $mailgun_sent = $this->send_coupon_mailgun( $coupon_email, $coupon_code, $title );
                 if ( is_wp_error( $mailgun_sent ) ) {
                     $mailgun_error = $mailgun_sent->get_error_message();
@@ -292,7 +305,6 @@ class WC_Collections_Plugin {
             }
         }
 
-        // Trigger a dataLayer push via response; frontend will push GTM event
         $resp = array(
             'success' => true,
             'post_id' => $new,
@@ -302,7 +314,6 @@ class WC_Collections_Plugin {
             'status' => $post_status,
         );
 
-        // return success
         wp_send_json_success( $resp );
     }
 
@@ -324,7 +335,7 @@ class WC_Collections_Plugin {
 
         if ( ! $coupon_id ) return new WP_Error( 'coupon_fail', 'Could not create coupon.' );
 
-        update_post_meta( $coupon_id, 'discount_type', $type ); // percent or fixed_cart
+        update_post_meta( $coupon_id, 'discount_type', $type ); 
         update_post_meta( $coupon_id, 'coupon_amount', $amount );
         update_post_meta( $coupon_id, 'individual_use', 'no' );
         update_post_meta( $coupon_id, 'product_ids', '' );
@@ -334,7 +345,6 @@ class WC_Collections_Plugin {
         update_post_meta( $coupon_id, 'limit_usage_to_x_items', '' );
         update_post_meta( $coupon_id, 'free_shipping', 'no' );
 
-        // store intended recipient (for our record)
         update_post_meta( $coupon_id, '_coupon_recipient_email', $email );
 
         return $code;
@@ -471,9 +481,7 @@ class WC_Collections_Plugin {
             wp_redirect( wc_get_cart_url() ); exit;
         }
 
-        // Clear cart optionally or not; here we add to existing cart
         foreach ( $product_ids as $pid ) {
-            // if it's a simple product: add to cart
             WC()->cart->add_to_cart( $pid );
         }
 

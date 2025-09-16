@@ -1,5 +1,4 @@
 jQuery(function($){
-    // init select2 on the admin metabox select element
     var $sel = $('#wc-collection-products');
     if ($sel.length) {
         $sel.select2({
@@ -15,7 +14,6 @@ jQuery(function($){
                     }
                 },
                 processResults: function(data){
-                    // data: [{id: , text: }]
                     return { results: data.items };
                 }
             },

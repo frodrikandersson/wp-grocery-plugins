@@ -1,5 +1,4 @@
 <?php
-// Minimal single-collection template
 get_header();
 global $post;
 $product_ids = get_post_meta( $post->ID, '_collection_product_ids', true );

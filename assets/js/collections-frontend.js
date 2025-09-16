@@ -1,5 +1,4 @@
 jQuery(function($){
-    // init select2 product search
     function formatProduct(item) {
         return item.text;
     }
@@ -25,9 +24,6 @@ jQuery(function($){
         templateSelection: formatProduct,
     });
 
-    // hook: implement an AJAX endpoint to search products
-    // We add a dynamic handler via wp_ajax below in PHP (but simpler: call WP REST /?rest_route=... not included here).
-    // Instead provide a fallback: load all products? For now plugin adds AJAX endpoint via admin-ajax.
 
     $('#wc-collection-create-form').on('submit', function(e){
         e.preventDefault();
@@ -45,7 +41,6 @@ jQuery(function($){
                 if (r.mailgun_error) msg += ' Mail error: ' + r.mailgun_error;
                 $('#wc-collection-create-result').html('<div class="notice-success">' + msg + '</div>');
 
-                // push dataLayer event for GTM
                 if (window.dataLayer) {
                     window.dataLayer.push({
                         event: 'collectionCreated',
